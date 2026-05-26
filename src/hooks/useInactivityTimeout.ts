@@ -8,7 +8,7 @@ const TIMEOUT_MS = 15 * 60 * 1000;
 const EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"] as const;
 
 export function useInactivityTimeout() {
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const router = useRouter();
 
   useEffect(() => {
