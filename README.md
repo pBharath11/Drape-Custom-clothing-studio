@@ -1,36 +1,141 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Drape — Bespoke Clothing, Made to Order
+
+A full-stack e-commerce platform for customized clothing with live 3D preview. Design a garment (fabric, colour, print, pattern), enter your exact measurements, and have it handcrafted and delivered to your door.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16 (App Router, TypeScript) |
+| Styling | Tailwind CSS v4 |
+| 3D Viewer | Three.js (direct — no React Three Fiber) |
+| Animations | Framer Motion 12 |
+| State | Zustand 5 |
+| Auth + DB | Supabase (Google OAuth, Postgres) |
+| Payments | Stripe (Elements, webhooks) |
+| Email | Resend |
+| Hosting | Vercel |
+
+## Features
+
+- **3D live customizer** — fabric texture, colour, print patterns, front/back print upload; all changes reflected live on the 3D model
+- **Multiple clothing types** — long-sleeve shirt (multi-zone), hoodie, t-shirt (single-zone)
+- **Measurements modal** — 5 body measurements, cm/in toggle, collapsible size guide
+- **Cart + checkout** — Zustand cart, two-step checkout (address → Stripe payment)
+- **Saved cards** — Stripe Customer + `setup_future_usage` for returning customers
+- **Order history** — stored in Supabase; synced to local Zustand store
+- **Saved addresses** — stored in Supabase; add/remove from profile panel
+- **Order confirmation email** — Resend, fires on success page
+- **Stripe webhook** — auto-updates order status on payment events
+- **Global navbar** — logo, section nav (Shop / About Us / Our Production / FAQ), cart, profile; active section highlighting on scroll
+- **Animated homepage** — hero parallax, 3D spinning card carousel, scroll-driven sections with clip-reveal headings and directional slide-ins
 
 ## Getting Started
 
-First, run the development server:
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Set environment variables
+
+Create `.env.local` in the project root:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+RESEND_API_KEY=
+EMAIL_FROM=Drape <onboarding@resend.dev>
+EMAIL_TO_OVERRIDE=your@email.com   # dev only — remove in production
+```
+
+### 3. Set up the database
+
+Run `supabase/schema.sql` in your Supabase project → **SQL Editor → New query**. This creates all tables and RLS policies.
+
+### 4. Run the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 5. Set up the Stripe webhook (local dev)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
 
-## Learn More
+Copy the webhook signing secret it prints and set it as `STRIPE_WEBHOOK_SECRET` in `.env.local`.
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/
+│   ├── page.tsx                  # Home page
+│   ├── customize/[type]/page.tsx # 3D customizer
+│   ├── checkout/                 # Checkout + success pages
+│   └── api/                      # API routes
+│       ├── addresses/
+│       ├── orders/
+│       ├── checkout/
+│       ├── stripe/               # customer, payment-methods, setup-save-card, webhook
+│       └── emails/
+├── components/
+│   ├── viewer/                   # Three.js scene + hooks
+│   ├── customizer/               # Customizer UI
+│   ├── shop/                     # ClothingCard
+│   ├── checkout/                 # CheckoutPage, MeasurementsModal
+│   └── ui/                       # GlobalNav, CartDrawer, ProfilePanel
+├── hooks/
+│   └── useAuth.ts
+├── lib/
+│   ├── supabase.ts               # Browser client
+│   └── supabase-server.ts        # Service role client + auth helper
+├── store/                        # Zustand stores
+└── types/                        # clothing.ts, order.ts
+supabase/
+└── schema.sql                    # Database schema + RLS policies
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Adding a New Clothing Type
 
-## Deploy on Vercel
+1. Add a GLB file to `/public/models/`
+2. Add a card image to `/public/images/`
+3. Add a config entry to `src/types/clothing.ts`:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```ts
+const myItemConfig: ClothingModelConfig = {
+  type: "my-item",
+  label: "My Item",
+  modelBasePath: "/models/",
+  modelFilename: "my-item.glb",
+  materialRoles: {
+    front: ["FrontMaterial"],   // omit if single-zone
+    back: ["BackMaterial"],
+    accent: ["ButtonMaterial"],
+  },
+  colorOptions: sharedColorOptions,
+  fabricOptions: sharedFabricOptions,
+  designOptions: fullDesignOptions,
+  basePrice: 5000,              // in pence/cents
+  cardImageSrc: "/images/card-my-item.jpg",
+};
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4. Add it to the `clothingModels` array. That's it — the customizer, cart, and checkout handle it automatically.
+
+## Deployment
+
+Deploy to Vercel. Set all environment variables in the Vercel dashboard. For the Stripe webhook, create a production endpoint in the Stripe dashboard pointing to `https://your-domain.com/api/stripe/webhook` and update `STRIPE_WEBHOOK_SECRET`.
+
+Remove `EMAIL_TO_OVERRIDE` once you have a verified sending domain on Resend.
